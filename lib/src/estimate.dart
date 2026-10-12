@@ -8,19 +8,30 @@ import 'package:locator_engine/src/observation.dart';
 import 'package:locator_engine/src/probability_map.dart';
 import 'package:rubble_core/rubble_core.dart';
 
+const _logSqrtTwoPi = 0.91893853320467274178;
+
 /// The probability map of where the phone most likely is, given the [observations] of one target
 /// around the rubble [outline]. Pure and deterministic; heavy — call it off the UI isolate.
 ///
-/// Per cell (centres inside the outline) and phone height z, with the unknowns of [profile]
-/// marginalised (path-loss exponent, rubble attenuation, common offset):
-/// heard: log N(median; μ, σ); not heard: log Φ((threshold − μ) / σ) — a point with no signal is
-/// data (rule 3). μ = P0 + c − 10 n log10(r) − α·r_in, σ² = slow² + fast² + (v·α·r_in)², r_in the
-/// part of the link inside the rubble. Matches the hub's `tools/sim/engine_reference.py`.
+/// Per cell (centres inside the outline) and phone height, with the unknowns of [profile]
+/// marginalised (path-loss exponent, rubble attenuation, common offset): heard: log N(median; μ, σ);
+/// not heard: log Φ((threshold − μ) / σ) — a point with no signal is data (rule 3). Matches the hub's
+/// `tools/sim/engine_reference.py`.
+///
+/// Throws [ArgumentError] without observations (a region out of nothing would mislead) or when no
+/// cell centre lies inside the outline.
 ProbabilityMap estimate({
   required RubblePolygon outline,
   required List<Observation> observations,
   required EngineProfile profile,
 }) {
+  if (observations.isEmpty) {
+    throw ArgumentError.value(
+      observations,
+      'observations',
+      'need at least one point',
+    );
+  }
   final cell = profile.cellM;
   final bounds = outline.bounds;
   final x0 = bounds.min.x.value;
@@ -28,16 +39,20 @@ ProbabilityMap estimate({
   final cols = ((bounds.max.x.value - x0) / cell - 1e-9).ceil();
   final rows = ((bounds.max.y.value - y0) / cell - 1e-9).ceil();
   final count = cols * rows;
+  final footprint = Footprint(outline);
 
-  final cx = Float64List(count);
-  final cy = Float64List(count);
   final inside = <int>[];
   for (var i = 0; i < count; i++) {
-    cx[i] = x0 + cell / 2 + cell * (i % cols);
-    cy[i] = y0 + cell / 2 + cell * (i ~/ cols);
-    if (outline.contains(SitePoint(Meters(cx[i]), Meters(cy[i])))) {
+    if (footprint.contains(_cx(x0, cell, cols, i), _cy(y0, cell, cols, i))) {
       inside.add(i);
     }
+  }
+  if (inside.isEmpty) {
+    throw ArgumentError.value(
+      outline,
+      'outline',
+      'smaller than one $cell m cell',
+    );
   }
 
   final offsetWeights = [
@@ -48,47 +63,66 @@ ProbabilityMap estimate({
   final logWeights = [for (final w in offsetWeights) math.log(w / weightSum)];
 
   final n = inside.length;
-  final acc = Float64List(n)..fillRange(0, n, double.negativeInfinity);
   final k = observations.length;
-  final logR = List.generate(k, (_) => Float64List(n));
+  final acc = Float64List(n)..fillRange(0, n, double.negativeInfinity);
+  final length = List.generate(k, (_) => Float64List(n));
   final rIn = List.generate(k, (_) => Float64List(n));
+  final mean = List.generate(k, (_) => Float64List(n));
+  final sd = List.generate(k, (_) => Float64List(n));
+  final logSd = List.generate(k, (_) => Float64List(n));
   final ll = Float64List(n);
-  final fading =
-      profile.slowFadingDb * profile.slowFadingDb +
-      profile.fastFadingDb * profile.fastFadingDb;
 
   for (final fraction in profile.victimHeightFractions) {
     final z = fraction * profile.rubbleHeightM;
     for (var o = 0; o < k; o++) {
       final at = observations[o].at;
       for (var j = 0; j < n; j++) {
-        final i = inside[j];
-        final dx = cx[i] - at.x.value;
-        final dy = cy[i] - at.y.value;
-        final length = math.sqrt(dx * dx + dy * dy + z * z);
-        logR[o][j] = math.log(math.max(length, 0.3)) / math.ln10;
-        rIn[o][j] = insideFraction(outline, at, cx[i], cy[i]) * length;
+        final x = _cx(x0, cell, cols, inside[j]);
+        final y = _cy(y0, cell, cols, inside[j]);
+        final dx = x - at.x.value;
+        final dy = y - at.y.value;
+        length[o][j] = math.sqrt(dx * dx + dy * dy + z * z);
+        rIn[o][j] =
+            footprint.insideFraction(at.x.value, at.y.value, x, y) *
+            length[o][j];
       }
     }
     for (final exponent in profile.pathLossExponents) {
       for (final alpha in profile.attenuationDbPerM) {
+        // Everything but the offset, once per (exponent, attenuation).
+        for (var o = 0; o < k; o++) {
+          for (var j = 0; j < n; j++) {
+            final link = linkModel(
+              profile,
+              exponent: exponent,
+              alpha: alpha,
+              length: length[o][j],
+              rIn: rIn[o][j],
+            );
+            mean[o][j] = link.mean;
+            sd[o][j] = link.sd;
+            logSd[o][j] = math.log(link.sd);
+          }
+        }
         for (var c = 0; c < profile.offsetsDb.length; c++) {
           final offset = profile.offsetsDb[c];
           ll.fillRange(0, n, logWeights[c]);
           for (var o = 0; o < k; o++) {
-            final observation = observations[o];
-            final median = observation.median?.value;
-            for (var j = 0; j < n; j++) {
-              final loss = profile.linkVariation * alpha * rIn[o][j];
-              final sd = math.sqrt(fading + loss * loss);
-              final mu =
-                  profile.txPowerAt1mDbm +
-                  offset -
-                  10 * exponent * logR[o][j] -
-                  alpha * rIn[o][j];
-              ll[j] += median != null
-                  ? logNormalPdf(median, mu, sd)
-                  : logNormalCdf((profile.thresholdDbm - mu) / sd);
+            final median = observations[o].median?.value;
+            final mo = mean[o];
+            final so = sd[o];
+            if (median != null) {
+              final lso = logSd[o];
+              for (var j = 0; j < n; j++) {
+                final u = (median - mo[j] - offset) / so[j];
+                ll[j] += -_logSqrtTwoPi - lso[j] - 0.5 * u * u;
+              }
+            } else {
+              for (var j = 0; j < n; j++) {
+                ll[j] += logNormalCdf(
+                  (profile.thresholdDbm - mo[j] - offset) / so[j],
+                );
+              }
             }
           }
           for (var j = 0; j < n; j++) {
@@ -113,32 +147,38 @@ ProbabilityMap estimate({
   for (final i in inside) {
     probabilities[i] /= sum;
   }
-
-  final sorted = [for (final i in inside) probabilities[i]]
-    ..sort((a, b) => b.compareTo(a));
-  final (k50, t50) = _smallestHolding(sorted, 0.5);
-  final (k90, t90) = _smallestHolding(sorted, 0.9);
   return ProbabilityMap(
     origin: SitePoint(Meters(x0), Meters(y0)),
     cell: Meters(cell),
     cols: cols,
     rows: rows,
     probabilities: probabilities,
-    area50: SquareMeters(k50 * cell * cell),
-    area90: SquareMeters(k90 * cell * cell),
-    threshold50: t50,
-    threshold90: t90,
+    regions: _regions(probabilities, inside),
   );
 }
 
-/// How many of the [sorted] (descending) probabilities hold [mass], and the smallest of them.
-(int, double) _smallestHolding(List<double> sorted, double mass) {
+double _cx(double x0, double cell, int cols, int i) =>
+    x0 + cell / 2 + cell * (i % cols);
+
+double _cy(double y0, double cell, int cols, int i) =>
+    y0 + cell / 2 + cell * (i ~/ cols);
+
+/// 2 for the smallest set of cells holding 50 %, 1 for the rest of the 90 % set, 0 otherwise — by
+/// count, so the regions are exactly the areas reported (ties keep the lower index).
+Uint8List _regions(Float64List probabilities, List<int> inside) {
+  final order = [...inside]
+    ..sort((a, b) {
+      final byP = probabilities[b].compareTo(probabilities[a]);
+      return byP != 0 ? byP : a.compareTo(b);
+    });
+  final regions = Uint8List(probabilities.length);
   var cumulative = 0.0;
-  for (var i = 0; i < sorted.length; i++) {
-    cumulative += sorted[i];
-    if (cumulative >= mass) return (i + 1, sorted[i]);
+  for (final i in order) {
+    if (cumulative >= 0.9 - 1e-12) break;
+    regions[i] = cumulative < 0.5 - 1e-12 ? 2 : 1;
+    cumulative += probabilities[i];
   }
-  return (sorted.length, sorted.isEmpty ? 0 : sorted.last);
+  return regions;
 }
 
 double _logAddExp(double a, double b) {

@@ -24,6 +24,10 @@ final map = estimate(
   profile: EngineProfile.voidedPancake,
 );
 map.area50; // SquareMeters — the most likely area
+map.regionOf(i); // Region.likely50 / likely90 / outside, per cell
 ```
+
+`estimate` needs at least one observation (a map out of nothing would mislead) and an outline larger
+than one cell; it throws `ArgumentError` otherwise.
 
 Depends only on [`rubble_core`](https://github.com/Berkant35/rubble_core). Licence: Apache-2.0.

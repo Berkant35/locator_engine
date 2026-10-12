@@ -9,7 +9,6 @@ environment:
   sdk: ^3.13.4
 
 dependencies:
-  collection: ^1.19.0
   meta: ^1.17.0
   rubble_core:
     git:

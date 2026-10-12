@@ -8,27 +8,21 @@ void main() {
   final rect = RubblePolygon([p(0, 0), p(12, 0), p(12, 10), p(0, 10)]);
   final profile = EngineProfile.voidedPancake;
 
-  test(
-    'with no measurement yet, the suggestion is a spot just outside the rubble',
-    () {
-      final map = estimate(
-        outline: rect,
-        observations: const [],
-        profile: profile,
-      );
-      final next = suggestNextPoint(
-        outline: rect,
-        observations: const [],
-        map: map,
-        profile: profile,
-      )!;
-      expect(rect.contains(next), isFalse);
-      final distanceToRubble = [
-        for (final e in rect.edges) _distance(next, e.start, e.end),
-      ].reduce((a, b) => a < b ? a : b);
-      expect(distanceToRubble, closeTo(1, 0.05));
-    },
-  );
+  test('the suggestion is a spot 1 m outside the rubble', () {
+    final first = [Observation.heard(p(-1, -1), const Dbm(-80))];
+    final map = estimate(outline: rect, observations: first, profile: profile);
+    final next = suggestNextPoint(
+      outline: rect,
+      observations: first,
+      map: map,
+      profile: profile,
+    )!;
+    expect(rect.contains(next), isFalse);
+    final distanceToRubble = [
+      for (final e in rect.edges) _distance(next, e.start, e.end),
+    ].reduce((a, b) => a < b ? a : b);
+    expect(distanceToRubble, closeTo(1, 0.05));
+  });
 
   test('never within 2 m of a point already measured', () {
     final observations = [

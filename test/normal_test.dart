@@ -1,27 +1,50 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:locator_engine/src/normal.dart';
 import 'package:test/test.dart';
 
 void main() {
-  // Values from scipy.stats.norm.logcdf.
-  const reference = [
-    (-40.0, -804.6084420137538),
-    (-10.0, -53.23128515051248),
-    (-5.0, -15.064998393988727),
-    (-3.0, -6.60772622151035),
-    (-1.0, -1.8410216450092634),
-    (0.0, -0.6931471805599453),
-    (1.0, -0.1727537790234499),
-    (3.0, -0.0013508099647481923),
-    (8.0, -6.220960574271742e-16),
+  // scipy.special.log_ndtr on a dense grid from −60 to 10 (7007 values).
+  final reference = jsonDecode(
+    File('test/fixtures/log_ndtr.json').readAsStringSync(),
+  ) as Map<String, Object?>;
+  final zs = [
+    for (final v in reference['z']! as List<Object?>) (v! as num).toDouble(),
+  ];
+  final expected = [
+    for (final v in reference['logPhi']! as List<Object?>)
+      (v! as num).toDouble(),
   ];
 
-  test('log Φ matches scipy from the far tail to the top', () {
-    for (final (z, expected) in reference) {
-      final relative = ((logNormalCdf(z) - expected) / expected).abs();
-      expect(relative, lessThan(1e-12), reason: 'z = $z');
+  double worst(double Function(double) f) {
+    var worst = 0.0;
+    for (var i = 0; i < zs.length; i++) {
+      final error = (f(zs[i]) - expected[i]).abs();
+      if (error > worst) worst = error;
     }
+    return worst;
+  }
+
+  test('exact log Φ matches scipy to 1e-11 everywhere (no cancellation near erfc argument 3)', () {
+    expect(worst(logNormalCdfExact), lessThan(1e-11));
+  });
+
+  test('fast log Φ (table) matches scipy to 1e-9 everywhere', () {
+    expect(worst(logNormalCdf), lessThan(1e-9));
+  });
+
+  test('fast log Φ costs a few operations, not a series', () {
+    logNormalCdf(0); // builds the table
+    final watch = Stopwatch()..start();
+    var sink = 0.0;
+    for (var i = 0; i < 1000000; i++) {
+      sink += logNormalCdf(-8 + i * 1e-5);
+    }
+    watch.stop();
+    expect(sink.isFinite, isTrue);
+    expect(watch.elapsedMilliseconds, lessThan(400));
   });
 
   test('the log density of a normal distribution', () {
@@ -31,14 +54,6 @@ void main() {
         -0.5 * math.log(2 * math.pi) - math.log(6) - 0.5 * (5 / 6) * (5 / 6),
         1e-15,
       ),
-    );
-  });
-
-  test('log Φ is continuous where the two methods meet (erfc argument 3)', () {
-    const z = -3 * math.sqrt2;
-    expect(
-      (logNormalCdf(z - 1e-9) - logNormalCdf(z + 1e-9)).abs(),
-      lessThan(1e-7),
     );
   });
 }
