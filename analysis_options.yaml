@@ -1,0 +1,31 @@
+include: package:lints/recommended.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+
+linter:
+  rules:
+    always_declare_return_types: true
+    always_use_package_imports: true
+    avoid_catches_without_on_clauses: true
+    avoid_dynamic_calls: true
+    avoid_positional_boolean_parameters: true
+    avoid_redundant_argument_values: true
+    directives_ordering: true
+    discarded_futures: true
+    exhaustive_cases: true
+    only_throw_errors: true
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    prefer_final_locals: true
+    prefer_single_quotes: true
+    public_member_api_docs: true
+    sort_constructors_first: true
+    type_annotate_public_apis: true
+    unawaited_futures: true
+    unnecessary_lambdas: true
+    use_named_constants: true
+    use_super_parameters: true

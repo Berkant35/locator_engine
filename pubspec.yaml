@@ -1,0 +1,21 @@
+name: locator_engine
+description: BeneathSOS probability engine in pure Dart — where a phone under rubble most likely is, as a probability map with 50 % and 90 % regions, and the next most informative measurement point.
+version: 0.1.0
+publish_to: none # git dependency on rubble_core; consumed as a git dependency too
+repository: https://github.com/Berkant35/locator_engine
+issue_tracker: https://github.com/Berkant35/locator_engine/issues
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  collection: ^1.19.0
+  meta: ^1.17.0
+  rubble_core:
+    git:
+      url: https://github.com/Berkant35/rubble_core.git
+      ref: v0.2.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6

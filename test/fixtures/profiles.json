@@ -1,0 +1,78 @@
+{
+ "voided_pancake@1": {
+  "id": "voided_pancake@1",
+  "txPowerAt1mDbm": -59.0,
+  "thresholdDbm": -100.0,
+  "slowFadingDb": 6.0,
+  "fastFadingDb": 1.118033988749895,
+  "offsetSdDb": 5.0,
+  "offsetsDb": [
+   -12.0,
+   -9.0,
+   -6.0,
+   -3.0,
+   0.0,
+   3.0,
+   6.0,
+   9.0,
+   12.0
+  ],
+  "linkVariation": 0.3,
+  "pathLossExponents": [
+   2.0,
+   2.5,
+   3.0
+  ],
+  "attenuationDbPerM": [
+   2.0,
+   3.0,
+   4.0,
+   5.0,
+   6.0
+  ],
+  "rubbleHeightM": 4.0,
+  "victimHeightFractions": [
+   0.25,
+   0.6
+  ],
+  "cellM": 0.25
+ },
+ "dense@1": {
+  "id": "dense@1",
+  "txPowerAt1mDbm": -59.0,
+  "thresholdDbm": -100.0,
+  "slowFadingDb": 6.0,
+  "fastFadingDb": 1.118033988749895,
+  "offsetSdDb": 5.0,
+  "offsetsDb": [
+   -12.0,
+   -9.0,
+   -6.0,
+   -3.0,
+   0.0,
+   3.0,
+   6.0,
+   9.0,
+   12.0
+  ],
+  "linkVariation": 0.3,
+  "pathLossExponents": [
+   2.0,
+   2.5,
+   3.0
+  ],
+  "attenuationDbPerM": [
+   5.0,
+   7.5,
+   10.0,
+   12.5,
+   15.0
+  ],
+  "rubbleHeightM": 4.0,
+  "victimHeightFractions": [
+   0.25,
+   0.6
+  ],
+  "cellM": 0.25
+ }
+}
