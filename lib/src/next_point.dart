@@ -19,6 +19,11 @@ const _minSeparation = 2.0;
 /// The cells that carry this much probability are enough to score candidates.
 const _scoredMass = 0.99;
 
+/// Candidates are scored against blocks of cells about this wide (their probability and centre of
+/// mass): a reading 1 m outside the rubble cannot tell 0.25 m cells apart, and a flat map early in a
+/// search would otherwise cost seconds on a phone.
+const _blockM = 1.0;
+
 /// The measurement point expected to teach the most about [map]: a spot at least 1 m from every wall
 /// of the rubble, at least 2 m from every measured point, or null when there is none.
 ///
@@ -32,7 +37,7 @@ SitePoint? suggestNextPoint({
   required ProbabilityMap map,
   required EngineProfile profile,
 }) {
-  final cells = _likelyCells(map);
+  final blocks = _likelyBlocks(map);
   final exponent = _middle(profile.pathLossExponents);
   final alpha = _middle(profile.attenuationDbPerM);
   final z = _middle(profile.victimHeightFractions) * profile.rubbleHeightM;
@@ -52,10 +57,7 @@ SitePoint? suggestNextPoint({
     var mean = 0.0;
     var meanSquare = 0.0;
     var variance = 0.0;
-    for (final (i, p) in cells) {
-      final centre = map.centre(i);
-      final x = centre.x.value;
-      final y = centre.y.value;
+    for (final (x, y, p) in blocks) {
       final dx = x - candidate.x.value;
       final dy = y - candidate.y.value;
       final length = math.sqrt(dx * dx + dy * dy + z * z);
@@ -99,6 +101,20 @@ SitePoint? suggestNextPoint({
     }
   }
   return best;
+}
+
+/// The most likely cells holding [_scoredMass] of the probability, gathered into [_blockM] blocks:
+/// (centre of mass x, y, probability).
+List<(double, double, double)> _likelyBlocks(ProbabilityMap map) {
+  final side = math.max(1, (_blockM / map.cell.value).round());
+  final blocks = <int, (double, double, double)>{};
+  for (final (i, p) in _likelyCells(map)) {
+    final key = (i ~/ map.cols) ~/ side * map.cols + (i % map.cols) ~/ side;
+    final centre = map.centre(i);
+    final (x, y, q) = blocks[key] ?? (0.0, 0.0, 0.0);
+    blocks[key] = (x + p * centre.x.value, y + p * centre.y.value, q + p);
+  }
+  return [for (final (x, y, q) in blocks.values) (x / q, y / q, q)];
 }
 
 /// The most likely cells holding [_scoredMass] of the probability, with their probabilities.

@@ -163,6 +163,59 @@ void main() {
       expect(watch.elapsed, lessThan(const Duration(seconds: 3)));
     },
   );
+
+  test('early in a search (15 points, nothing heard) a 40 × 30 m site stays within the budget', () {
+    final site = RubblePolygon([p(0, 0), p(40, 0), p(40, 30), p(0, 30)]);
+    // Around the whole site: the map stays nearly flat, the hardest case for the suggestion.
+    final observations = [
+      for (var i = 0; i < 5; i++) Observation.notHeard(p(-1 + i * 10.5, -1)),
+      for (var i = 0; i < 5; i++) Observation.notHeard(p(-1 + i * 10.5, 31)),
+      for (var i = 1; i < 4; i++) Observation.notHeard(p(-1, i * 7.5)),
+      for (var i = 1; i < 3; i++) Observation.notHeard(p(41, i * 10.0)),
+    ];
+    final watch = Stopwatch()..start();
+    for (final profile in EngineProfile.builtIn) {
+      final map = estimate(
+        outline: site,
+        observations: observations,
+        profile: profile,
+      );
+      suggestNextPoint(
+        outline: site,
+        observations: observations,
+        map: map,
+        profile: profile,
+      );
+    }
+    watch.stop();
+    // Both profiles; a phone is a few times slower than a laptop.
+    expect(watch.elapsed, lessThan(const Duration(seconds: 3)));
+  });
+
+  test('a very large site is mapped on a coarser grid, not for minutes', () {
+    final site = RubblePolygon([p(0, 0), p(80, 0), p(80, 60), p(0, 60)]);
+    final observations = [
+      Observation.notHeard(p(-1, -1)),
+      Observation.notHeard(p(81, 61)),
+      Observation.heard(p(-1, 61), const Dbm(-95)),
+    ];
+    final watch = Stopwatch()..start();
+    final map = estimate(
+      outline: site,
+      observations: observations,
+      profile: EngineProfile.voidedPancake,
+    );
+    suggestNextPoint(
+      outline: site,
+      observations: observations,
+      map: map,
+      profile: EngineProfile.voidedPancake,
+    );
+    watch.stop();
+    expect(map.cols * map.rows, lessThanOrEqualTo(maxCells));
+    expect(map.cell.value, greaterThan(EngineProfile.voidedPancake.cellM));
+    expect(watch.elapsed, lessThan(const Duration(seconds: 3)));
+  });
 }
 
 double _distance(SitePoint q, SitePoint a, SitePoint b) {

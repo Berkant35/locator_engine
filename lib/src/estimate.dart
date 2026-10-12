@@ -10,6 +10,11 @@ import 'package:rubble_core/rubble_core.dart';
 
 const _logSqrtTwoPi = 0.91893853320467274178;
 
+/// The most grid cells a map gets: a larger site gets cells coarser than the profile's (a whole
+/// multiple), so a phone maps it in seconds — the cost grows with cells × points × unknowns. 6000 keeps
+/// 0.25 m cells up to about 20 × 15 m and 0.5 m cells up to 40 × 30 m; the regions are many m² anyway.
+const maxCells = 6000;
+
 /// The probability map of where the phone most likely is, given the [observations] of one target
 /// around the rubble [outline]. Pure and deterministic; heavy — call it off the UI isolate.
 ///
@@ -32,12 +37,19 @@ ProbabilityMap estimate({
       'need at least one point',
     );
   }
-  final cell = profile.cellM;
   final bounds = outline.bounds;
   final x0 = bounds.min.x.value;
   final y0 = bounds.min.y.value;
-  final cols = ((bounds.max.x.value - x0) / cell - 1e-9).ceil();
-  final rows = ((bounds.max.y.value - y0) / cell - 1e-9).ceil();
+  final width = bounds.max.x.value - x0;
+  final depth = bounds.max.y.value - y0;
+  // The profile's cell, or a whole multiple of it on a site too large for [maxCells].
+  var cell = profile.cellM;
+  while ((width / cell - 1e-9).ceil() * (depth / cell - 1e-9).ceil() >
+      maxCells) {
+    cell += profile.cellM;
+  }
+  final cols = (width / cell - 1e-9).ceil();
+  final rows = (depth / cell - 1e-9).ceil();
   final count = cols * rows;
   final footprint = Footprint(outline);
 
@@ -67,6 +79,19 @@ ProbabilityMap estimate({
   final acc = Float64List(n)..fillRange(0, n, double.negativeInfinity);
   final length = List.generate(k, (_) => Float64List(n));
   final rIn = List.generate(k, (_) => Float64List(n));
+  // The share of the path inside the rubble does not depend on the phone's height.
+  final fractionIn = List.generate(k, (o) {
+    final at = observations[o].at;
+    return Float64List.fromList([
+      for (var j = 0; j < n; j++)
+        footprint.insideFraction(
+          at.x.value,
+          at.y.value,
+          _cx(x0, cell, cols, inside[j]),
+          _cy(y0, cell, cols, inside[j]),
+        ),
+    ]);
+  });
   final mean = List.generate(k, (_) => Float64List(n));
   final sd = List.generate(k, (_) => Float64List(n));
   final logSd = List.generate(k, (_) => Float64List(n));
@@ -82,9 +107,7 @@ ProbabilityMap estimate({
         final dx = x - at.x.value;
         final dy = y - at.y.value;
         length[o][j] = math.sqrt(dx * dx + dy * dy + z * z);
-        rIn[o][j] =
-            footprint.insideFraction(at.x.value, at.y.value, x, y) *
-            length[o][j];
+        rIn[o][j] = fractionIn[o][j] * length[o][j];
       }
     }
     for (final exponent in profile.pathLossExponents) {
