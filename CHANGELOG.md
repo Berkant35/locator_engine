@@ -1,3 +1,6 @@
+## 0.1.2
+- rubble_core v0.3.0.
+
 ## 0.1.1
 - Faster on large and early-stage sites: a site above `maxCells` (6000) gets a coarser grid (a whole
   multiple of the profile's cell); the share of each path inside the rubble is computed once per point
